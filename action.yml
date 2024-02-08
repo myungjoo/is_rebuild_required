@@ -14,13 +14,14 @@ inputs:
     default: 'C,C++'
 
   head:
-    description: 'the head commit of the PR'
+    description: 'the head commit of the PR. The last commit of the PR will be chosen if not specified'
     required: false
-    default: 'HEAD'
+    default: 'none'
 
   num-commits:
-    description: 'the number of commits in this PR'
-    required: true
+    description: 'the number of commits to be examined in this PR. All commits in the PR will be checked if not specified'
+    required: false
+    default: '0'
 
 outputs:
   rebuild:
@@ -32,18 +33,23 @@ runs:
   steps:
   - uses: actions/checkout@v4
     with:
-      ref: ${{ inputs.head }}
-      fetch-depth: -${{ inputs.num-commits }}
+      ref: ${{ github.event.pull_request.head.sha }}
+      fetch-depth: ${{ github.event.pull_request.commits }}
   - id: rebuild-check
     shell: bash
     run: |
       tmpfile=$(mktemp)
+      if [[ "$HEAD" == "none" ]]; then HEAD=$DEFAULT_HEAD; fi
+      if [[ "$NCOMMIT" == "0" ]]; then NCOMMIT=$DEFAULT_NCOMMIT; fi
+      echo "Checking $NCOMMIT commits from $HEAD commit."
       git show --pretty="format:" --name-only --diff-filter=AMRC $HEAD -$NCOMMIT | sort | uniq | awk NF > ${tmpfile}
       rebuild=`bash ${ACTION_PATH}/check_if_rebuild_requires.sh ${tmpfile} $BTYPE | grep "REBUILD=YES" | wc -l`
       echo "Rebuild required: ${rebuild}"
       echo "rebuild=${rebuild}" >> "$GITHUB_ENV"
       echo "rebuild=${rebuild}" >> $GITHUB_OUTPUT
     env:
+      DEFAULT_HEAD: ${{ github.event.pull_request.head.sha }}
+      DEFAULT_NCOMMIT: ${{ github.event.pull_request.commits }}
       HEAD: ${{ inputs.head }}
       NCOMMIT: ${{ inputs.num-commits }}
       BTYPE: ${{ inputs.build-script }}
