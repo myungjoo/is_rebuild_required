@@ -1,0 +1,50 @@
+name: 'Check if rebuild required for a given pull request'
+author: 'MyungJoo Ham'
+description: 'Read the commit contents of a given pull request and find out if a rebuild is required.'
+
+inputs:
+  build-script:
+    description: 'The build tool and target language that determines build scripts to be checked for rebuild requirement. (gbs, debian, android, build)'
+    required: false
+    default: 'build'
+
+  language:
+    description: 'The programming language of the given repo. This determined the file extensions to be checked for rebuild requirement.'
+    required: false
+    default: 'C,C++'
+
+  head:
+    description: 'the head commit of the PR'
+    required: false
+    default: 'HEAD'
+
+  num-commits:
+    description: 'the number of commits in this PR'
+    required: true
+
+outputs:
+  rebuild:
+    description: 'Rebulid required or not (1 or 0)'
+    value: ${{ steps.rebuild-check.outputs.rebuild }}
+  
+runs:
+  using: "composite"
+  steps:
+  - uses: actions/checkout@v4
+    with:
+      ref: ${{ inputs.head }}
+      fetch-depth: -${{ inputs.num-commits }}
+  - id: rebuild-check
+    shell: bash
+    run: |
+      tmpfile=$(mktemp)
+      git show --pretty="format:" --name-only --diff-filter=AMRC $HEAD -$NCOMMIT | sort | uniq | awk NF > ${tmpfile}
+      rebuild=`bash ${ACTION_PATH}/check_if_rebuild_requires.sh ${tmpfile} $BTYPE | grep "REBUILD=YES" | wc -l`
+      echo "Rebuild required: ${rebuild}"
+      echo "rebuild=${rebuild}" >> "$GITHUB_ENV"
+      echo "rebuild=${rebuild}" >> $GITHUB_OUTPUT
+    env:
+      HEAD: ${{ inputs.head }}
+      NCOMMIT: ${{ inputs.num-commits }}
+      BTYPE: ${{ inputs.build-script }}
+      ACTION_PATH: ${{ github.action_path }}
